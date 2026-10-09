@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ledger — Budget Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#F2F5EC;
+    --paper-raised:#FBFAF6;
+    --stripe:#E4EEDD;
+    --ink:#1E2A22;
+    --ink-soft:#5B6A5F;
+    --rule:#C9D1C0;
+    --rule-strong:#9FAE93;
+    --forest:#2E6B4A;
+    --forest-soft:#DCEBE1;
+    --brick:#B0392B;
+    --brick-soft:#F3E1DD;
+    --brass:#A9772F;
+    --brass-soft:#F1E6D3;
+    --radius:3px;
+    --serif:'Source Serif 4', Georgia, serif;
+    --mono:'IBM Plex Mono','Courier New', monospace;
+  }
+  body.dark{
+    --paper:#121C17;
+    --paper-raised:#19271F;
+    --stripe:#1C2B22;
+    --ink:#E9F0E8;
+    --ink-soft:#93A79A;
+    --rule:#31473B;
+    --rule-strong:#41594A;
+    --forest:#7FCB9F;
+    --forest-soft:#1E3A2C;
+    --brick:#E08A78;
+    --brick-soft:#3B211D;
+    --brass:#DAAF6E;
+    --brass-soft:#3A2E1B;
+  }
+  *,*::before,*::after{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--serif);
+    line-height:1.45;
+    transition:background .25s ease, color .25s ease;
+  }
+  *:focus-visible{ outline:2px solid var(--forest); outline-offset:2px; }
+  button{ font-family:inherit; cursor:pointer; }
+  .mono{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  .sheet{
+    max-width:1180px;
+    margin:0 auto;
+    padding:2rem 1.5rem 4rem;
+    opacity:0;
+    transform:translateY(10px);
+  }
+  .sheet.loaded{
+    animation:riseIn .55s ease-out forwards;
+  }
+  @keyframes riseIn{ to{ opacity:1; transform:translateY(0);} }
+
+  /* ---- Masthead ---- */
+  .masthead{
+    display:flex; flex-wrap:wrap; gap:1rem;
+    justify-content:space-between; align-items:flex-end;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:1.1rem; margin-bottom:1.5rem;
+  }
+  .masthead h1{
+    margin:0; font-size:clamp(1.6rem,3vw,2.3rem); font-weight:600; letter-spacing:-0.01em;
+  }
+  .masthead .sub{ margin:.25rem 0 0; color:var(--ink-soft); font-size:.95rem; }
+  .masthead-right{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+  .tab-btn, select.tab-select{
+    background:transparent; border:1px solid var(--rule-strong); color:var(--ink);
+    padding:.45rem .75rem; border-radius:var(--radius); font-size:.85rem; font-family:var(--mono);
+  }
+  .tab-btn:hover{ background:var(--stripe); }
+
+  /* ---- Stubs ---- */
+  .stubs{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:1.25rem 2rem; margin-bottom:1.25rem;
+  }
+  .stub{ border-bottom:2px solid var(--rule); padding-bottom:.75rem; position:relative; }
+  .stub-head{ display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; }
+  .stub label{ font-family:var(--mono); font-size:.72rem; color:var(--ink-soft); }
+  .stub-figure{
+    font-family:var(--mono); font-variant-numeric:tabular-nums;
+    font-size:clamp(1.3rem,2.6vw,1.8rem); font-weight:500; display:block; margin-top:.2rem;
+  }
+  .balance-stub .stub-figure{ font-size:clamp(1.7rem,3.4vw,2.4rem); font-weight:600; }
+  .status-forest{ color:var(--forest); }
+  .status-brass{ color:var(--brass); }
+  .status-brick{ color:var(--brick); }
+  .edit-pencil{
+    background:none; border:none; color:var(--ink-soft); font-size:.75rem; font-family:var(--mono);
+    text-decoration:underline; text-underline-offset:2px; padding:0;
+  }
+  .edit-pencil:hover{ color:var(--forest); }
+  .inline-edit{
+    font-size:clamp(1.3rem,2.6vw,1.8rem); font-weight:500; width:100%;
+    background:transparent; border:none; border-bottom:1px dashed var(--forest); color:var(--ink); padding:0;
+  }
+  select#currencySelect{
+    border:none; background:transparent; color:var(--ink-soft); font-family:var(--mono); font-size:.72rem;
+  }
+
+  /* ---- Progress ---- */
+  .progress-row{ display:flex; align-items:center; gap:.9rem; margin-bottom:1rem; }
+  .progress-track{
+    flex:1; height:10px; background:var(--stripe); border:1px solid var(--rule);
+    border-radius:2px; overflow:hidden;
+  }
+  .progress-fill{ height:100%; width:0%; transition:width .5s ease; }
+  #progressLabel{ font-size:.78rem; color:var(--ink-soft); white-space:nowrap; }
+
+  /* ---- Alert ---- */
+  .alert-banner{
+    border-left:4px solid var(--brass); background:var(--brass-soft); color:var(--ink);
+    padding:.65rem .9rem; border-radius:2px; font-size:.9rem; margin-bottom:1.25rem;
+  }
+  .alert-banner.brick{ border-left-color:var(--brick); background:var(--brick-soft); }
+  .alert-banner.hidden{ display:none; }
+
+  /* ---- Grid ---- */
+  .ledger-grid{ display:grid; grid-template-columns:1fr 340px; gap:2rem; align-items:start; }
+  @media (max-width:900px){ .ledger-grid{ grid-template-columns:1fr; } }
+
+  /* ---- Entry form ---- */
+  .entry-row{
+    display:flex; flex-wrap:wrap; gap:1rem 1.25rem; align-items:flex-end;
+    border:1px solid var(--rule); background:var(--paper-raised); padding:1rem 1.1rem;
+    border-radius:var(--radius); margin-bottom:1.5rem;
+  }
+  .field{ display:flex; flex-direction:column; gap:.3rem; flex:1 1 130px; min-width:110px; }
+  .field.description{ flex:2 1 200px; }
+  .field label{ font-family:var(--mono); font-size:.68rem; color:var(--ink-soft); }
+  .field input, .field select{
+    border:none; border-bottom:1.5px solid var(--rule-strong); background:transparent;
+    color:var(--ink); font-family:var(--mono); font-size:.9rem; padding:.35rem .1rem;
+  }
+  .field select{ font-family:var(--serif); }
+  .field input:focus, .field select:focus{ border-bottom-color:var(--forest); }
+  .field input:disabled, .field select:disabled{ opacity:.5; }
+  .entry-actions{ display:flex; gap:.6rem; align-items:center; }
+  #submitBtn{
+    background:var(--ink); color:var(--paper-raised); border:none;
+    padding:.55rem 1.1rem; border-radius:var(--radius); font-size:.85rem; font-weight:500;
+  }
+  #submitBtn:hover{ opacity:.85; }
+  #cancelEditBtn{
+    background:none; border:none; color:var(--ink-soft); text-decoration:underline;
+    font-size:.8rem; text-underline-offset:2px;
+  }
+  #cancelEditBtn.hidden{ display:none; }
+  .form-error{ color:var(--brick); font-size:.8rem; flex-basis:100%; min-height:1em; }
+
+  /* ---- Register controls ---- */
+  .register-controls{ display:flex; flex-wrap:wrap; gap:.75rem; margin-bottom:.75rem; align-items:center; }
+  .register-controls input, .register-controls select{
+    border:1px solid var(--rule-strong); background:var(--paper-raised); color:var(--ink);
+    padding:.4rem .6rem; border-radius:var(--radius); font-family:var(--mono); font-size:.82rem;
+  }
+  .register-controls input{ flex:1 1 160px; }
+
+  /* ---- Table ---- */
+  .register-wrap{ overflow-x:auto; border:1px solid var(--rule); border-radius:var(--radius); }
+  table.register{ width:100%; border-collapse:collapse; font-family:var(--mono); font-size:.86rem; min-width:640px; }
+  table.register thead th{
+    text-align:left; padding:.6rem .7rem; border-bottom:2px solid var(--ink);
+    font-family:var(--serif); font-weight:600; font-size:.85rem; background:var(--paper-raised);
+  }
+  table.register th.num, table.register td.num{ text-align:right; }
+  table.register tbody tr:nth-child(even){ background:var(--stripe); }
+  table.register td{ padding:.55rem .7rem; border-bottom:1px solid var(--rule); vertical-align:middle; }
+  .cat-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:.4rem; }
+  .amt-income{ color:var(--forest); }
+  .amt-expense{ color:var(--ink); }
+  .actions{ white-space:nowrap; }
+  .link-btn{
+    background:none; border:none; color:var(--ink-soft); font-family:var(--mono); font-size:.78rem;
+    text-decoration:underline; text-underline-offset:2px; padding:0; margin-right:.6rem;
+  }
+  .link-btn:hover{ color:var(--forest); }
+  .void-btn:hover{ color:var(--brick); }
+  .empty-row{ text-align:center; padding:1.5rem !important; color:var(--ink-soft); font-family:var(--serif); }
+
+  /* ---- Side panels ---- */
+  .panel{
+    border:1px solid var(--rule); background:var(--paper-raised); border-radius:var(--radius);
+    padding:1rem 1.1rem; margin-bottom:1.5rem;
+  }
+  .panel h2{ margin:0 0 .75rem; font-size:1rem; font-weight:600; }
+  .chart-box{ position:relative; height:190px; margin-bottom:.75rem; }
+  .chart-box.short{ height:170px; margin-bottom:0; }
+  ul.tally{ list-style:none; margin:0; padding:0; }
+  li.tally-row{
+    display:grid; grid-template-columns:96px 1fr 68px; gap:.5rem; align-items:center;
+    padding:.32rem 0; border-bottom:1px dotted var(--rule); font-size:.82rem;
+  }
+  li.tally-row:last-child{ border-bottom:none; }
+  .tally-label{ display:flex; align-items:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .swatch{ width:9px; height:9px; border-radius:2px; margin-right:.4rem; flex:none; }
+  .tally-bar{ height:6px; background:var(--stripe); border-radius:2px; overflow:hidden; }
+  .tally-fill{ display:block; height:100%; }
+  .tally-amt{ font-family:var(--mono); text-align:right; }
+  .tally-empty{ color:var(--ink-soft); font-size:.85rem; }
+
+  .footnote{ color:var(--ink-soft); font-size:.78rem; margin-top:.5rem; }
+
+  @media (prefers-reduced-motion:reduce){
+    *{ animation:none !important; transition:none !important; }
+    .sheet{ opacity:1; transform:none; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="masthead">
+    <div>
+      <h1>Ledger</h1>
+      <p class="sub">A running record of what comes in and what goes out.</p>
+    </div>
+    <div class="masthead-right">
+      <select id="monthFilter" class="tab-select" aria-label="Select period"></select>
+      <button id="darkToggle" class="tab-btn" type="button">Night ledger</button>
+      <button id="exportCsv" class="tab-btn" type="button">Export CSV</button>
+    </div>
+  </header>
+
+  <section class="stubs">
+    <div class="stub">
+      <div class="stub-head">
+        <label for="budgetFigure">Monthly budget</label>
+        <button class="edit-pencil" id="editBudgetBtn" type="button">edit</button>
+      </div>
+      <span class="stub-figure mono" id="budgetFigure">₹0.00</span>
+    </div>
+    <div class="stub">
+      <div class="stub-head">
+        <label>Income this period</label>
+        <select id="currencySelect" aria-label="Currency">
+          <option value="₹">₹ INR</option>
+          <option value="$">$ USD</option>
+          <option value="€">€ EUR</option>
+          <option value="£">£ GBP</option>
+        </select>
+      </div>
+      <span class="stub-figure mono" id="incomeFigure">₹0.00</span>
+    </div>
+    <div class="stub">
+      <label>Spent this period</label>
+      <span class="stub-figure mono" id="spentFigure">₹0.00</span>
+    </div>
+    <div class="stub balance-stub">
+      <label>Balance remaining</label>
+      <span class="stub-figure mono status-forest" id="balanceFigure">₹0.00</span>
+    </div>
+  </section>
+
+  <div class="progress-row">
+    <div class="progress-track"><div class="progress-fill status-forest" id="progressFill"></div></div>
+    <span id="progressLabel" class="mono">0% used</span>
+  </div>
+
+  <div id="alertBanner" class="alert-banner hidden"></div>
+
+  <div class="ledger-grid">
+    <div class="ledger-main">
+
+      <form id="entryForm" class="entry-row">
+        <div class="field">
+          <label for="dateInput">Date</label>
+          <input type="date" id="dateInput" required>
+        </div>
+        <div class="field description">
+          <label for="descriptionInput">Description</label>
+          <input type="text" id="descriptionInput" placeholder="What was it for?" required>
+        </div>
+        <div class="field">
+          <label for="typeInput">Type</label>
+          <select id="typeInput">
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="categoryInput">Category</label>
+          <select id="categoryInput">
+            <option>Food</option>
+            <option>Rent</option>
+            <option>Transport</option>
+            <option>Utilities</option>
+            <option>Entertainment</option>
+            <option>Shopping</option>
+            <option>Other</option>
+            <option value="Income">Income</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="amountInput">Amount</label>
+          <input type="number" id="amountInput" min="0.01" step="0.01" placeholder="0.00" required>
+        </div>
+        <div class="entry-actions">
+          <button id="submitBtn" type="submit">Post entry</button>
+          <button id="cancelEditBtn" type="button" class="hidden">Cancel</button>
+        </div>
+        <div class="form-error" id="formError"></div>
+      </form>
+
+      <div class="register-controls">
+        <input type="text" id="searchInput" placeholder="Search description…" aria-label="Search entries">
+        <select id="categoryFilter" aria-label="Filter by category">
+          <option value="all">All categories</option>
+          <option>Food</option>
+          <option>Rent</option>
+          <option>Transport</option>
+          <option>Utilities</option>
+          <option>Entertainment</option>
+          <option>Shopping</option>
+          <option>Other</option>
+          <option value="Income">Income</option>
+        </select>
+      </div>
+
+      <div class="register-wrap">
+        <table class="register">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th>Type</th>
+              <th class="num">Amount</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="registerBody"></tbody>
+        </table>
+      </div>
+      <p class="footnote">Figures update as you post or void entries. Everything here stays in your browser's local storage — nothing is sent anywhere.</p>
+    </div>
+
+    <aside class="ledger-side">
+      <div class="panel">
+        <h2>Spending by category</h2>
+        <div class="chart-box"><canvas id="categoryChart"></canvas></div>
+        <ul class="tally" id="categoryTally"></ul>
+      </div>
+      <div class="panel">
+        <h2>Daily spending</h2>
+        <div class="chart-box short"><canvas id="trendChart"></canvas></div>
+      </div>
+    </aside>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'ledgerBudgetTracker_v1';
+  const CATEGORY_COLORS = {
+    Food:'#6E8B5E', Rent:'#8C6D46', Transport:'#4A7A8C', Utilities:'#A9772F',
+    Entertainment:'#8C5B8C', Shopping:'#B06A5A', Other:'#7A8074', Income:'#2E6B4A'
+  };
+
+  const todayISO = () => new Date().toISOString().slice(0,10);
+
+  function seedData(){
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth()+1).padStart(2,'0');
+    const d = (day)=> `${y}-${m}-${String(day).padStart(2,'0')}`;
+    return {
+      budget: 40000,
+      currencySymbol: '₹',
+      darkMode: false,
+      transactions: [
+        {id:'seed1', date:d(1), description:'Monthly rent', category:'Rent', type:'expense', amount:25000},
+        {id:'seed2', date:d(2), description:'Salary', category:'Income', type:'income', amount:55000},
+        {id:'seed3', date:d(3), description:'Groceries', category:'Food', type:'expense', amount:1800},
+        {id:'seed4', date:d(4), description:'Fuel', category:'Transport', type:'expense', amount:900},
+        {id:'seed5', date:d(5), description:'Electricity bill', category:'Utilities', type:'expense', amount:1500},
+        {id:'seed6', date:d(5), description:'Movie night', category:'Entertainment', type:'expense', amount:600},
+        {id:'seed7', date:d(6), description:'New shoes', category:'Shopping', type:'expense', amount:2200}
+      ]
+    };
+  }
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){ console.warn('Could not read saved ledger, starting fresh.', e); }
+    return seedData();
+  }
+  function saveState(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch(e){ console.warn('Could not save ledger.', e); }
+  }
+
+  let state = loadState();
+  let editingId = null;
+  let categoryChart = null;
+  let trendChart = null;
+
+  const el = (id) => document.getElementById(id);
+  const monthFilter = el('monthFilter');
+  const categoryFilterSel = el('categoryFilter');
+  const searchInput = el('searchInput');
+  const entryForm = el('entryForm');
+  const dateInput = el('dateInput');
+  const descriptionInput = el('descriptionInput');
+  const typeSelect = el('typeInput');
+  const categorySelect = el('categoryInput');
+  const amountInput = el('amountInput');
+  const formError = el('formError');
+  const registerBody = el('registerBody');
+  let budgetFigure = el('budgetFigure');
+  const incomeFigure = el('incomeFigure');
+  const spentFigure = el('spentFigure');
+  const balanceFigure = el('balanceFigure');
+  const progressFill = el('progressFill');
+  const progressLabel = el('progressLabel');
+  const alertBanner = el('alertBanner');
+  const categoryTally = el('categoryTally');
+  const currencySelect = el('currencySelect');
+
+  function fmt(amount){
+    const symbol = state.currencySymbol || '₹';
+    const negative = amount < 0;
+    const abs = Math.abs(amount);
+    return (negative ? '−' : '') + symbol + abs.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function monthKey(dateStr){ return dateStr.slice(0,7); }
+  function monthLabel(key){
+    if(key === 'all') return 'All time';
+    const [y,m] = key.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleDateString('en-US', {month:'long', year:'numeric'});
+  }
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function formatDateDisplay(iso){
+    const [y,m,d] = iso.split('-');
+    return `${d}/${m}/${y.slice(2)}`;
+  }
+  function cssVar(name, fallback){
+    const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  function populateMonthFilter(){
+    const keys = Array.from(new Set(state.transactions.map(t => monthKey(t.date))));
+    const current = monthKey(todayISO());
+    if(!keys.includes(current)) keys.push(current);
+    keys.sort().reverse();
+    const prevValue = monthFilter.value || current;
+    monthFilter.innerHTML = '';
+    keys.forEach(k=>{
+      const opt = document.createElement('option');
+      opt.value = k; opt.textContent = monthLabel(k);
+      monthFilter.appendChild(opt);
+    });
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all'; allOpt.textContent = 'All time';
+    monthFilter.appendChild(allOpt);
+    monthFilter.value = keys.includes(prevValue) ? prevValue : current;
+  }
+
+  function getFilteredByMonth(){
+    const key = monthFilter.value;
+    if(key === 'all') return state.transactions.slice();
+    return state.transactions.filter(t => monthKey(t.date) === key);
+  }
+
+  function renderStubs(){
+    const monthTx = getFilteredByMonth();
+    const income = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+    const expense = monthTx.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+    const effectiveBudget = Number(state.budget) + income;
+    const remaining = effectiveBudget - expense;
+    const pct = effectiveBudget > 0 ? (expense/effectiveBudget*100) : (expense>0 ? 100 : 0);
+
+    budgetFigure.textContent = fmt(Number(state.budget));
+    incomeFigure.textContent = fmt(income);
+    spentFigure.textContent = fmt(expense);
+    balanceFigure.textContent = fmt(remaining);
+
+    let status = 'status-forest';
+    if(pct>=100) status='status-brick'; else if(pct>=80) status='status-brass';
+    balanceFigure.classList.remove('status-forest','status-brass','status-brick');
+    balanceFigure.classList.add(status);
+    progressFill.classList.remove('status-forest','status-brass','status-brick');
+    progressFill.classList.add(status);
+    progressFill.style.width = Math.min(pct,100)+'%';
+    progressLabel.textContent = `${pct.toFixed(1)}% of ${monthLabel(monthFilter.value).toLowerCase()} budget used`;
+
+    alertBanner.classList.remove('brick','hidden');
+    if(pct>=100){
+      alertBanner.textContent = `This period is ${fmt(expense-effectiveBudget)} over budget.`;
+      alertBanner.classList.add('brick');
+    } else if(pct>=80){
+      alertBanner.textContent = `Heads up — ${pct.toFixed(0)}% of this period's budget is spent.`;
+      alertBanner.classList.remove('brick');
+    } else {
+      alertBanner.classList.add('hidden');
+    }
+  }
+
+  function renderCategoryTally(){
+    const monthTx = getFilteredByMonth().filter(t=>t.type==='expense');
+    const totals = {};
+    monthTx.forEach(t=>{ totals[t.category] = (totals[t.category]||0) + Number(t.amount); });
+    const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+    const max = entries.length ? entries[0][1] : 0;
+
+    categoryTally.innerHTML = '';
+    if(!entries.length){
+      const li = document.createElement('li');
+      li.className = 'tally-empty';
+      li.textContent = 'No expenses posted for this period yet.';
+      categoryTally.appendChild(li);
+    } else {
+      entries.forEach(([cat, amt])=>{
+        const li = document.createElement('li');
+        li.className = 'tally-row';
+        const color = CATEGORY_COLORS[cat] || '#7A8074';
+        li.innerHTML = `
+          <span class="tally-label"><span class="swatch" style="background:${color}"></span>${cat}</span>
+          <span class="tally-bar"><span class="tally-fill" style="width:${max ? (amt/max*100) : 0}%; background:${color}"></span></span>
+          <span class="tally-amt">${fmt(amt)}</span>`;
+        categoryTally.appendChild(li);
+      });
+    }
+
+    const ctx = el('categoryChart').getContext('2d');
+    if(categoryChart) categoryChart.destroy();
+    if(entries.length){
+      categoryChart = new Chart(ctx, {
+        type:'doughnut',
+        data:{
+          labels: entries.map(e=>e[0]),
+          datasets:[{
+            data: entries.map(e=>e[1]),
+            backgroundColor: entries.map(e=>CATEGORY_COLORS[e[0]] || '#7A8074'),
+            borderColor: cssVar('--paper-raised', '#FBFAF6'),
+            borderWidth: 2
+          }]
+        },
+        options:{
+          maintainAspectRatio:false,
+          cutout:'62%',
+          plugins:{
+            legend:{ display:false },
+            tooltip:{ callbacks:{ label:(c)=> ` ${c.label}: ${fmt(c.parsed)}` } }
+          }
+        }
+      });
+    }
+  }
+
+  function renderTrendChart(){
+    const key = monthFilter.value;
+    const ctx = el('trendChart').getContext('2d');
+    if(trendChart) trendChart.destroy();
+
+    const inkSoft = cssVar('--ink-soft', '#5B6A5F');
+    const rule = cssVar('--rule', '#C9D1C0');
+    const forest = cssVar('--forest', '#2E6B4A');
+    let labels, data;
+
+    if(key === 'all'){
+      const totals = {};
+      state.transactions.filter(t=>t.type==='expense').forEach(t=>{
+        const k = monthKey(t.date);
+        totals[k] = (totals[k]||0) + Number(t.amount);
+      });
+      const keys = Object.keys(totals).sort();
+      labels = keys.map(k=>monthLabel(k));
+      data = keys.map(k=>totals[k]);
+    } else {
+      const [y,m] = key.split('-').map(Number);
+      const daysInMonth = new Date(y,m,0).getDate();
+      const totals = new Array(daysInMonth).fill(0);
+      state.transactions.filter(t=>t.type==='expense' && monthKey(t.date)===key).forEach(t=>{
+        const day = Number(t.date.slice(8,10));
+        totals[day-1] += Number(t.amount);
+      });
+      labels = totals.map((_,i)=>String(i+1));
+      data = totals;
+    }
+
+    trendChart = new Chart(ctx, {
+      type:'bar',
+      data:{ labels, datasets:[{ data, backgroundColor: forest, borderRadius:2, maxBarThickness:26 }] },
+      options:{
+        maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=> ` ${fmt(c.parsed.y)}` } } },
+        scales:{
+          x:{ grid:{ display:false }, ticks:{ color:inkSoft, font:{family:"'IBM Plex Mono', monospace", size:10} } },
+          y:{ grid:{ color:rule }, ticks:{ color:inkSoft, font:{family:"'IBM Plex Mono', monospace", size:10}, callback:(v)=> state.currencySymbol+v } }
+        }
+      }
+    });
+  }
+
+  function renderRegister(){
+    const monthTx = getFilteredByMonth();
+    const catFilter = categoryFilterSel.value;
+    const q = searchInput.value.trim().toLowerCase();
+
+    let rows = monthTx.filter(t=>{
+      if(catFilter !== 'all' && t.category !== catFilter) return false;
+      if(q && !t.description.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    rows.sort((a,b)=> b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
+
+    registerBody.innerHTML = '';
+    if(!rows.length){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6" class="empty-row">No entries yet for this view — post one above to start the ledger.</td>`;
+      registerBody.appendChild(tr);
+      return;
+    }
+
+    rows.forEach(t=>{
+      const tr = document.createElement('tr');
+      const signedAmt = t.type === 'income' ? `+${fmt(t.amount)}` : `−${fmt(t.amount)}`;
+      tr.innerHTML = `
+        <td>${formatDateDisplay(t.date)}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td><span class="cat-dot" style="background:${CATEGORY_COLORS[t.category]||'#7A8074'}"></span>${t.category}</td>
+        <td>${t.type === 'income' ? 'Income' : 'Expense'}</td>
+        <td class="num ${t.type==='income' ? 'amt-income' : 'amt-expense'}">${signedAmt}</td>
+        <td class="actions">
+          <button class="link-btn edit-btn" type="button" data-id="${t.id}">edit</button>
+          <button class="link-btn void-btn" type="button" data-id="${t.id}">void</button>
+        </td>`;
+      registerBody.appendChild(tr);
+    });
+
+    registerBody.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click', ()=>startEdit(b.dataset.id)));
+    registerBody.querySelectorAll('.void-btn').forEach(b=>b.addEventListener('click', ()=>voidEntry(b.dataset.id)));
+  }
+
+  function renderAll(){
+    populateMonthFilter();
+    renderStubs();
+    renderCategoryTally();
+    renderTrendChart();
+    renderRegister();
+  }
+
+  function syncCategoryForType(){
+    const incomeOpt = categorySelect.querySelector('option[value="Income"]');
+    if(typeSelect.value === 'income'){
+      categorySelect.value = 'Income';
+      categorySelect.disabled = true;
+    } else {
+      categorySelect.disabled = false;
+      if(incomeOpt) incomeOpt.disabled = true;
+      if(categorySelect.value === 'Income') categorySelect.value = 'Food';
+    }
+  }
+  typeSelect.addEventListener('change', syncCategoryForType);
+
+  function resetForm(){
+    entryForm.reset();
+    dateInput.value = todayISO();
+    typeSelect.value = 'expense';
+    syncCategoryForType();
+    editingId = null;
+    el('submitBtn').textContent = 'Post entry';
+    el('cancelEditBtn').classList.add('hidden');
+    formError.textContent = '';
+  }
+
+  function startEdit(id){
+    const t = state.transactions.find(x=>String(x.id)===String(id));
+    if(!t) return;
+    editingId = id;
+    dateInput.value = t.date;
+    descriptionInput.value = t.description;
+    typeSelect.value = t.type;
+    syncCategoryForType();
+    categorySelect.disabled = t.type === 'income';
+    categorySelect.value = t.category;
+    amountInput.value = t.amount;
+    el('submitBtn').textContent = 'Update entry';
+    el('cancelEditBtn').classList.remove('hidden');
+    formError.textContent = '';
+    entryForm.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  function voidEntry(id){
+    if(!confirm('Void this entry? This cannot be undone.')) return;
+    state.transactions = state.transactions.filter(t=>String(t.id)!==String(id));
+    saveState();
+    renderAll();
+  }
+
+  el('cancelEditBtn').addEventListener('click', resetForm);
+
+  entryForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const date = dateInput.value;
+    const description = descriptionInput.value.trim();
+    const type = typeSelect.value;
+    const category = categorySelect.value;
+    const amount = parseFloat(amountInput.value);
+
+    if(!date || !description || !category || isNaN(amount) || amount <= 0){
+      formError.textContent = 'Fill in every field with an amount greater than zero.';
+      return;
+    }
+    formError.textContent = '';
+
+    if(editingId){
+      const t = state.transactions.find(x=>String(x.id)===String(editingId));
+      Object.assign(t, {date, description, type, category, amount});
+    } else {
+      state.transactions.push({
+        id: 't'+Date.now()+Math.random().toString(36).slice(2,7),
+        date, description, type, category, amount
+      });
+    }
+    saveState();
+    resetForm();
+    renderAll();
+  });
+
+  el('editBudgetBtn').addEventListener('click', ()=>{
+    const input = document.createElement('input');
+    input.type = 'number'; input.min = '0'; input.step = '0.01';
+    input.value = state.budget;
+    input.className = 'inline-edit mono';
+    budgetFigure.replaceWith(input);
+    input.focus(); input.select();
+    function commit(){
+      const val = parseFloat(input.value);
+      state.budget = (isNaN(val) || val < 0) ? state.budget : val;
+      saveState();
+      input.replaceWith(budgetFigure);
+      renderStubs();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); input.blur(); } });
+  });
+
+  currencySelect.addEventListener('change', ()=>{
+    state.currencySymbol = currencySelect.value;
+    saveState();
+    renderAll();
+  });
+
+  monthFilter.addEventListener('change', renderAll);
+  categoryFilterSel.addEventListener('change', renderRegister);
+  searchInput.addEventListener('input', renderRegister);
+
+  el('darkToggle').addEventListener('click', ()=>{
+    document.body.classList.toggle('dark');
+    state.darkMode = document.body.classList.contains('dark');
+    el('darkToggle').textContent = state.darkMode ? 'Day ledger' : 'Night ledger';
+    saveState();
+    renderCategoryTally();
+    renderTrendChart();
+  });
+
+  el('exportCsv').addEventListener('click', ()=>{
+    const monthTx = getFilteredByMonth();
+    const catFilter = categoryFilterSel.value;
+    const q = searchInput.value.trim().toLowerCase();
+    const rows = monthTx.filter(t=>{
+      if(catFilter !== 'all' && t.category !== catFilter) return false;
+      if(q && !t.description.toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a,b)=>a.date.localeCompare(b.date));
+
+    let csv = 'Date,Description,Category,Type,Amount\n';
+    rows.forEach(t=>{
+      csv += `${t.date},"${t.description.replace(/"/g,'""')}",${t.category},${t.type},${t.amount}\n`;
+    });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `ledger-${monthFilter.value}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // init
+  currencySelect.value = state.currencySymbol || '₹';
+  if(state.darkMode){
+    document.body.classList.add('dark');
+    el('darkToggle').textContent = 'Day ledger';
+  }
+  resetForm();
+  renderAll();
+  requestAnimationFrame(()=> document.querySelector('.sheet').classList.add('loaded'));
+})();
+</script>
+</body>
+</html>
